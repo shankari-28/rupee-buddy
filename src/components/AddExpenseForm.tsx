@@ -17,11 +17,12 @@ import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 const categories = Constants.public.Enums.expense_category;
+type ExpenseCategory = (typeof categories)[number];
 
 const formSchema = z.object({
   merchant: z.string().min(1, "Merchant is required"),
   amount: z.string().refine((val) => !isNaN(Number(val)) && Number(val) > 0, "Enter a valid amount"),
-  category: z.enum(categories as [string, ...string[]]),
+  category: z.string(),
   expense_date: z.date(),
   description: z.string().optional(),
 });
