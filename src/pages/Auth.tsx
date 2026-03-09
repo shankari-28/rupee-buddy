@@ -3,10 +3,11 @@ import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Eye, EyeOff } from "lucide-react";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
@@ -23,6 +24,7 @@ export default function Auth() {
   const { signIn, signUp } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
   const [tab, setTab] = useState<"signin" | "signup">("signin");
+  const [showPassword, setShowPassword] = useState(false);
 
   const form = useForm<AuthData>({
     resolver: zodResolver(authSchema),
@@ -87,7 +89,27 @@ export default function Auth() {
                     <FormItem>
                       <FormLabel>Password</FormLabel>
                       <FormControl>
-                        <Input placeholder="••••••" type="password" {...field} />
+                        <div className="relative">
+                          <Input
+                            placeholder="••••••"
+                            type={showPassword ? "text" : "password"}
+                            className="pr-10"
+                            {...field}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+                            onClick={() => setShowPassword(!showPassword)}
+                          >
+                            {showPassword ? (
+                              <EyeOff className="h-4 w-4 text-muted-foreground" />
+                            ) : (
+                              <Eye className="h-4 w-4 text-muted-foreground" />
+                            )}
+                          </Button>
+                        </div>
                       </FormControl>
                       <FormMessage />
                     </FormItem>
