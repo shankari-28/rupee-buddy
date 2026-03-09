@@ -2,8 +2,10 @@ import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BottomNav } from "@/components/BottomNav";
 import { AddExpenseForm } from "@/components/AddExpenseForm";
+import { ImportExpenses } from "@/components/ImportExpenses";
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate } from "react-router-dom";
 
@@ -24,14 +26,34 @@ export default function Add() {
       </header>
 
       <main className="mx-auto max-w-md p-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Manual Entry</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <AddExpenseForm onSuccess={() => navigate("/")} />
-          </CardContent>
-        </Card>
+        <Tabs defaultValue="manual">
+          <TabsList className="grid w-full grid-cols-2 mb-4">
+            <TabsTrigger value="manual">Manual Entry</TabsTrigger>
+            <TabsTrigger value="import">Scan / Import</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="manual">
+            <Card>
+              <CardHeader>
+                <CardTitle>Manual Entry</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <AddExpenseForm onSuccess={() => navigate("/")} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="import">
+            <Card>
+              <CardHeader>
+                <CardTitle>Import Expenses</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ImportExpenses onSuccess={() => navigate("/")} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </main>
 
       <BottomNav />
