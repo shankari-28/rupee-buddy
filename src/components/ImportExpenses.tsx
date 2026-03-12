@@ -53,7 +53,7 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
           merchant: e.merchant || "Unknown",
           amount: e.amount || 0,
           date: e.date || format(new Date(), "yyyy-MM-dd"),
-          category: categorizeByMerchant(e.merchant || ""),
+          category: resolveCategory(e.category, e.merchant || ""),
         }));
         setParsedExpenses(expenses);
         toast.success(`Found ${expenses.length} expense(s)`);
