@@ -84,16 +84,27 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
       const lines = text.split("\n").filter((l) => l.trim());
       const expenses: ParsedExpense[] = [];
 
+      // Detect category column from headers
+      const headers = parseCSVLine(lines[0]);
+      const categoryColIndex = findCategoryColumnIndex(headers);
+
       for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
         if (cols.length < 3) continue;
 
-        // Try to find amount, date, and description
         let amount = 0;
         let date = format(new Date(), "yyyy-MM-dd");
         let merchant = "";
+        let csvCategory = "";
 
-        for (const col of cols) {
+        // Extract category from detected column
+        if (categoryColIndex !== -1 && cols[categoryColIndex]) {
+          csvCategory = cols[categoryColIndex].replace(/"/g, "").trim().toLowerCase();
+        }
+
+        for (let j = 0; j < cols.length; j++) {
+          if (j === categoryColIndex) continue; // skip category column
+          const col = cols[j];
           const cleaned = col.replace(/[₹,\s"]/g, "").trim();
           const num = parseFloat(cleaned);
           
@@ -111,7 +122,7 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
             merchant,
             amount,
             date,
-            category: categorizeByMerchant(merchant),
+            category: resolveCategory(csvCategory, merchant),
           });
         }
       }
