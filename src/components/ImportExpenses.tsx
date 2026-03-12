@@ -62,7 +62,7 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
           merchant: data.merchant,
           amount: data.amount || 0,
           date: data.date || format(new Date(), "yyyy-MM-dd"),
-          category: categorizeByMerchant(data.merchant),
+          category: resolveCategory(data.category, data.merchant),
         };
         setParsedExpenses([expense]);
         toast.success("Receipt parsed successfully");
