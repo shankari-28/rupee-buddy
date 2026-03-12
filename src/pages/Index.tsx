@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, TrendingUp, ArrowRight } from "lucide-react";
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { Plus, TrendingUp, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { format, startOfMonth, endOfMonth, subMonths, addMonths, isSameMonth } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BottomNav } from "@/components/BottomNav";
