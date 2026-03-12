@@ -350,3 +350,18 @@ function parseIndianDate(str: string): string {
   }
   return format(new Date(), "yyyy-MM-dd");
 }
+
+function findCategoryColumnIndex(headers: string[]): number {
+  const normalized = headers.map((h) => h ? h.toLowerCase().replace(/[_\s]+/g, " ").trim() : "");
+  const names = ["category", "expense category", "type", "classification"];
+
+  for (const name of names) {
+    const idx = normalized.indexOf(name);
+    if (idx !== -1) return idx;
+  }
+  for (const name of names) {
+    const idx = normalized.findIndex((h) => h.includes(name));
+    if (idx !== -1) return idx;
+  }
+  return -1;
+}
