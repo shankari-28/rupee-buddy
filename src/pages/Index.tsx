@@ -13,10 +13,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Index() {
   const { user } = useAuth();
-  const [currentMonth] = useState(() => ({
-    start: startOfMonth(new Date()),
-    end: endOfMonth(new Date()),
-  }));
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const currentMonth = {
+    start: startOfMonth(currentDate),
+    end: endOfMonth(currentDate),
+  };
+  const isCurrentMonth = isSameMonth(currentDate, new Date());
+
+  const goToPrevMonth = () => setCurrentDate(prev => subMonths(prev, 1));
+  const goToNextMonth = () => {
+    if (!isCurrentMonth) setCurrentDate(prev => addMonths(prev, 1));
+  };
 
   const { data: expenses = [], isLoading } = useExpenses(currentMonth);
   const { stats } = useExpenseStats(currentMonth);
