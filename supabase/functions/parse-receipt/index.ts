@@ -38,21 +38,26 @@ serve(async (req) => {
           {
             role: "system",
             content: `You are an Indian receipt/invoice OCR system. Extract expense details from the image.
+The available expense categories are: food, transport, shopping, bills, entertainment, health, education, other.
+You MUST assign the most appropriate category based on the merchant/items.
+
 Return ONLY valid JSON with this structure:
 {
   "merchant": "store name",
   "amount": 123.45,
   "date": "YYYY-MM-DD",
+  "category": "food",
   "items": [{"name": "item", "price": 10}]
 }
 For bank statements with multiple transactions, return:
 {
   "expenses": [
-    {"merchant": "name", "amount": 100, "date": "YYYY-MM-DD"},
+    {"merchant": "name", "amount": 100, "date": "YYYY-MM-DD", "category": "food"},
     ...
   ]
 }
-Use today's date if not visible. Amount should be the total. Handle ₹ symbol.`,
+Use today's date if not visible. Amount should be the total. Handle ₹ symbol.
+Category guidelines: restaurants/food delivery=food, cab/train/fuel=transport, online shopping/retail=shopping, phone/electricity/gas=bills, movies/streaming/games=entertainment, pharmacy/hospital/doctor=health, courses/books/tuition=education.`,
           },
           {
             role: "user",

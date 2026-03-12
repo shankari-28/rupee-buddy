@@ -8,6 +8,18 @@ import { categorizeByMerchant } from "@/lib/merchant-rules";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { Constants } from "@/integrations/supabase/types";
+
+const validCategories = Constants.public.Enums.expense_category;
+
+function resolveCategory(aiCategory: string | undefined, merchant: string): string {
+  // First try AI-suggested category
+  if (aiCategory && validCategories.includes(aiCategory as any)) {
+    return aiCategory;
+  }
+  // Fallback to merchant-based rules
+  return categorizeByMerchant(merchant);
+}
 
 interface ParsedExpense {
   merchant: string;
@@ -41,7 +53,7 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
           merchant: e.merchant || "Unknown",
           amount: e.amount || 0,
           date: e.date || format(new Date(), "yyyy-MM-dd"),
-          category: categorizeByMerchant(e.merchant || ""),
+          category: resolveCategory(e.category, e.merchant || ""),
         }));
         setParsedExpenses(expenses);
         toast.success(`Found ${expenses.length} expense(s)`);
@@ -50,7 +62,7 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
           merchant: data.merchant,
           amount: data.amount || 0,
           date: data.date || format(new Date(), "yyyy-MM-dd"),
-          category: categorizeByMerchant(data.merchant),
+          category: resolveCategory(data.category, data.merchant),
         };
         setParsedExpenses([expense]);
         toast.success("Receipt parsed successfully");
@@ -72,16 +84,27 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
       const lines = text.split("\n").filter((l) => l.trim());
       const expenses: ParsedExpense[] = [];
 
+      // Detect category column from headers
+      const headers = parseCSVLine(lines[0]);
+      const categoryColIndex = findCategoryColumnIndex(headers);
+
       for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
         if (cols.length < 3) continue;
 
-        // Try to find amount, date, and description
         let amount = 0;
         let date = format(new Date(), "yyyy-MM-dd");
         let merchant = "";
+        let csvCategory = "";
 
-        for (const col of cols) {
+        // Extract category from detected column
+        if (categoryColIndex !== -1 && cols[categoryColIndex]) {
+          csvCategory = cols[categoryColIndex].replace(/"/g, "").trim().toLowerCase();
+        }
+
+        for (let j = 0; j < cols.length; j++) {
+          if (j === categoryColIndex) continue; // skip category column
+          const col = cols[j];
           const cleaned = col.replace(/[₹,\s"]/g, "").trim();
           const num = parseFloat(cleaned);
           
@@ -99,7 +122,7 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
             merchant,
             amount,
             date,
-            category: categorizeByMerchant(merchant),
+            category: resolveCategory(csvCategory, merchant),
           });
         }
       }
@@ -326,4 +349,19 @@ function parseIndianDate(str: string): string {
     return `${fullYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
   }
   return format(new Date(), "yyyy-MM-dd");
+}
+
+function findCategoryColumnIndex(headers: string[]): number {
+  const normalized = headers.map((h) => h ? h.toLowerCase().replace(/[_\s]+/g, " ").trim() : "");
+  const names = ["category", "expense category", "type", "classification"];
+
+  for (const name of names) {
+    const idx = normalized.indexOf(name);
+    if (idx !== -1) return idx;
+  }
+  for (const name of names) {
+    const idx = normalized.findIndex((h) => h.includes(name));
+    if (idx !== -1) return idx;
+  }
+  return -1;
 }
