@@ -51,11 +51,28 @@ export default function Index() {
       {/* Header */}
       <header className="border-b bg-card/50 px-4 py-4">
         <div className="mx-auto max-w-md">
-          <p className="text-sm text-muted-foreground">{format(new Date(), "MMMM yyyy")}</p>
-          <h1 className="text-2xl font-bold">
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" size="icon" onClick={goToPrevMonth}>
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <p className="text-sm font-medium text-muted-foreground">
+              {format(currentDate, "MMMM yyyy")}
+            </p>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={goToNextMonth}
+              disabled={isCurrentMonth}
+            >
+              <ChevronRight className="h-5 w-5" />
+            </Button>
+          </div>
+          <h1 className="text-center text-2xl font-bold">
             ₹{stats.totalSpent.toLocaleString("en-IN")}
           </h1>
-          <p className="text-xs text-muted-foreground">Total spent this month</p>
+          <p className="text-center text-xs text-muted-foreground">
+            Total spent {isCurrentMonth ? "this month" : `in ${format(currentDate, "MMMM")}`}
+          </p>
         </div>
       </header>
 
