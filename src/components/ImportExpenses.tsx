@@ -8,6 +8,18 @@ import { categorizeByMerchant } from "@/lib/merchant-rules";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { Constants } from "@/integrations/supabase/types";
+
+const validCategories = Constants.public.Enums.expense_category;
+
+function resolveCategory(aiCategory: string | undefined, merchant: string): string {
+  // First try AI-suggested category
+  if (aiCategory && validCategories.includes(aiCategory as any)) {
+    return aiCategory;
+  }
+  // Fallback to merchant-based rules
+  return categorizeByMerchant(merchant);
+}
 
 interface ParsedExpense {
   merchant: string;
