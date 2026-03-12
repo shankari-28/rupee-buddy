@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Plus, TrendingUp, ArrowRight } from "lucide-react";
-import { format, startOfMonth, endOfMonth } from "date-fns";
+import { Plus, TrendingUp, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { format, startOfMonth, endOfMonth, subMonths, addMonths, isSameMonth } from "date-fns";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { BottomNav } from "@/components/BottomNav";
@@ -13,10 +13,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Index() {
   const { user } = useAuth();
-  const [currentMonth] = useState(() => ({
-    start: startOfMonth(new Date()),
-    end: endOfMonth(new Date()),
-  }));
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const currentMonth = {
+    start: startOfMonth(currentDate),
+    end: endOfMonth(currentDate),
+  };
+  const isCurrentMonth = isSameMonth(currentDate, new Date());
+
+  const goToPrevMonth = () => setCurrentDate(prev => subMonths(prev, 1));
+  const goToNextMonth = () => {
+    if (!isCurrentMonth) setCurrentDate(prev => addMonths(prev, 1));
+  };
 
   const { data: expenses = [], isLoading } = useExpenses(currentMonth);
   const { stats } = useExpenseStats(currentMonth);
@@ -44,11 +51,28 @@ export default function Index() {
       {/* Header */}
       <header className="border-b bg-card/50 px-4 py-4">
         <div className="mx-auto max-w-md">
-          <p className="text-sm text-muted-foreground">{format(new Date(), "MMMM yyyy")}</p>
-          <h1 className="text-2xl font-bold">
+          <div className="flex items-center justify-between">
+            <Button variant="ghost" size="icon" onClick={goToPrevMonth}>
+              <ChevronLeft className="h-5 w-5" />
+            </Button>
+            <p className="text-sm font-medium text-muted-foreground">
+              {format(currentDate, "MMMM yyyy")}
+            </p>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={goToNextMonth}
+              disabled={isCurrentMonth}
+            >
+              <ChevronRight className="h-5 w-5" />
+            </Button>
+          </div>
+          <h1 className="text-center text-2xl font-bold">
             ₹{stats.totalSpent.toLocaleString("en-IN")}
           </h1>
-          <p className="text-xs text-muted-foreground">Total spent this month</p>
+          <p className="text-center text-xs text-muted-foreground">
+            Total spent {isCurrentMonth ? "this month" : `in ${format(currentDate, "MMMM")}`}
+          </p>
         </div>
       </header>
 
