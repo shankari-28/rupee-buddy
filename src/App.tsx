@@ -8,6 +8,7 @@ import Index from "./pages/Index";
 import Add from "./pages/Add";
 import History from "./pages/History";
 import Profile from "./pages/Profile";
+import Advisor from "./pages/Advisor";
 import Auth from "./pages/Auth";
 import NotFound from "./pages/NotFound";
 
@@ -24,6 +25,7 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/add" element={<Add />} />
             <Route path="/history" element={<History />} />
+            <Route path="/advisor" element={<Advisor />} />
             <Route path="/profile" element={<Profile />} />
             <Route path="/auth" element={<Auth />} />
             <Route path="*" element={<NotFound />} />
