@@ -6,6 +6,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BottomNav } from "@/components/BottomNav";
 import { AddExpenseForm } from "@/components/AddExpenseForm";
 import { ImportExpenses } from "@/components/ImportExpenses";
+import { VoiceExpenseEntry } from "@/components/VoiceExpenseEntry";
 import { useAuth } from "@/hooks/useAuth";
 import { Navigate } from "react-router-dom";
 
@@ -27,9 +28,10 @@ export default function Add() {
 
       <main className="mx-auto max-w-md p-4">
         <Tabs defaultValue="manual">
-          <TabsList className="grid w-full grid-cols-2 mb-4">
-            <TabsTrigger value="manual">Manual Entry</TabsTrigger>
-            <TabsTrigger value="import">Scan / Import</TabsTrigger>
+          <TabsList className="grid w-full grid-cols-3 mb-4">
+            <TabsTrigger value="manual">Manual</TabsTrigger>
+            <TabsTrigger value="voice">🎙️ Voice</TabsTrigger>
+            <TabsTrigger value="import">Scan</TabsTrigger>
           </TabsList>
 
           <TabsContent value="manual">
@@ -39,6 +41,19 @@ export default function Add() {
               </CardHeader>
               <CardContent>
                 <AddExpenseForm onSuccess={() => navigate("/")} />
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="voice">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  🎙️ Voice Entry
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <VoiceExpenseEntry onSuccess={() => navigate("/")} />
               </CardContent>
             </Card>
           </TabsContent>

@@ -3,29 +3,104 @@ import { Camera, Upload, FileSpreadsheet, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAddExpense } from "@/hooks/useExpenses";
-import { categorizeByMerchant } from "@/lib/merchant-rules";
+import { categorizeByMerchant, CATEGORY_ICONS } from "@/lib/merchant-rules";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
 import { Constants } from "@/integrations/supabase/types";
 
 const validCategories = Constants.public.Enums.expense_category;
+type ExpenseCategory = (typeof validCategories)[number];
 
-function resolveCategory(aiCategory: string | undefined, merchant: string): string {
-  // First try AI-suggested category
-  if (aiCategory && validCategories.includes(aiCategory as any)) {
-    return aiCategory;
+const CATEGORY_ALIASES: Record<string, ExpenseCategory> = {
+  food: "food",
+  foods: "food",
+  "food dining": "food",
+  dining: "food",
+  grocery: "food",
+  groceries: "food",
+  restaurant: "food",
+
+  transport: "transport",
+  travel: "transport",
+  fuel: "transport",
+  cab: "transport",
+  taxi: "transport",
+
+  shopping: "shopping",
+  ecommerce: "shopping",
+  "online shopping": "shopping",
+  retail: "shopping",
+
+  bills: "bills",
+  utility: "bills",
+  utilities: "bills",
+  recharge: "bills",
+
+  entertainment: "entertainment",
+  movies: "entertainment",
+  subscription: "entertainment",
+  subscriptions: "entertainment",
+
+  health: "health",
+  medical: "health",
+  pharmacy: "health",
+
+  education: "education",
+  books: "education",
+  course: "education",
+  courses: "education",
+
+  other: "other",
+  others: "other",
+  misc: "other",
+  miscellaneous: "other",
+};
+
+function normalizeCategory(rawCategory?: string): ExpenseCategory | undefined {
+  if (!rawCategory) return undefined;
+
+  const lowered = rawCategory.toLowerCase().trim();
+  const cleaned = lowered.replace(/[_&/-]+/g, " ").replace(/\s+/g, " ").trim();
+
+  if (validCategories.includes(cleaned as ExpenseCategory)) {
+    return cleaned as ExpenseCategory;
   }
-  // Fallback to merchant-based rules
-  return categorizeByMerchant(merchant);
+
+  if (CATEGORY_ALIASES[cleaned]) {
+    return CATEGORY_ALIASES[cleaned];
+  }
+
+  for (const [key, value] of Object.entries(CATEGORY_ALIASES)) {
+    if (cleaned.includes(key)) return value;
+  }
+
+  return undefined;
+}
+
+function resolveCategory(rawCategory: string | undefined, merchant: string, description?: string): ExpenseCategory {
+  const normalized = normalizeCategory(rawCategory);
+  if (normalized) return normalized;
+
+  const merchantCategory = categorizeByMerchant(merchant);
+  if (merchantCategory !== "other") return merchantCategory;
+
+  if (description) {
+    const descriptionCategory = categorizeByMerchant(description);
+    if (descriptionCategory !== "other") return descriptionCategory;
+  }
+
+  return "other";
 }
 
 interface ParsedExpense {
   merchant: string;
   amount: number;
   date: string;
-  category: string;
+  category: ExpenseCategory;
+  source: "ocr" | "csv";
 }
 
 export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
@@ -35,6 +110,25 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const addExpense = useAddExpense();
+
+  const updateParsedExpenseCategory = (index: number, category: ExpenseCategory) => {
+    setParsedExpenses((prev) =>
+      prev.map((expense, i) => (i === index ? { ...expense, category } : expense))
+    );
+  };
+
+  const updateParsedExpenseDate = (index: number, date: string) => {
+    setParsedExpenses((prev) =>
+      prev.map((expense, i) =>
+        i === index ? { ...expense, date: normalizeExpenseDate(date) } : expense
+      )
+    );
+  };
+
+  const setAllDatesToToday = () => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    setParsedExpenses((prev) => prev.map((expense) => ({ ...expense, date: today })));
+  };
 
   const handleFileUpload = async (file: File, source: "camera" | "upload") => {
     setIsProcessing(true);
@@ -49,21 +143,37 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
       if (error) throw error;
 
       if (data?.expenses && data.expenses.length > 0) {
-        const expenses = data.expenses.map((e: any) => ({
-          merchant: e.merchant || "Unknown",
-          amount: e.amount || 0,
-          date: e.date || format(new Date(), "yyyy-MM-dd"),
-          category: resolveCategory(e.category, e.merchant || ""),
-        }));
+        const expenses = data.expenses
+          .map((e: any) => ({
+            merchant: String(e.merchant || "").trim() || "Unknown",
+            amount: parseAmount(e.amount),
+            date: normalizeExpenseDate(e.date),
+            category: resolveCategory(e.category, e.merchant || "", e.description),
+            source: "ocr" as const,
+          }))
+          .filter((e: ParsedExpense) => e.amount > 0);
+
+        if (expenses.length === 0) {
+          toast.error("Could not detect valid amount(s) from receipt");
+          return;
+        }
+
         setParsedExpenses(expenses);
         toast.success(`Found ${expenses.length} expense(s)`);
       } else if (data?.merchant) {
         const expense = {
-          merchant: data.merchant,
-          amount: data.amount || 0,
-          date: data.date || format(new Date(), "yyyy-MM-dd"),
-          category: resolveCategory(data.category, data.merchant),
+          merchant: String(data.merchant || "").trim() || "Unknown",
+          amount: parseAmount(data.amount),
+          date: normalizeExpenseDate(data.date),
+          category: resolveCategory(data.category, data.merchant, data.description),
+          source: "ocr" as const,
         };
+
+        if (expense.amount <= 0) {
+          toast.error("Could not detect a valid amount from receipt");
+          return;
+        }
+
         setParsedExpenses([expense]);
         toast.success("Receipt parsed successfully");
       } else {
@@ -87,6 +197,7 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
       // Detect category column from headers
       const headers = parseCSVLine(lines[0]);
       const categoryColIndex = findCategoryColumnIndex(headers);
+      const descriptionColIndex = findColumnIndex(headers, ["description", "narration", "remarks", "note", "particulars"]);
 
       for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
@@ -96,22 +207,26 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
         let date = format(new Date(), "yyyy-MM-dd");
         let merchant = "";
         let csvCategory = "";
+        let description = "";
 
         // Extract category from detected column
         if (categoryColIndex !== -1 && cols[categoryColIndex]) {
           csvCategory = cols[categoryColIndex].replace(/"/g, "").trim().toLowerCase();
         }
 
+        if (descriptionColIndex !== -1 && cols[descriptionColIndex]) {
+          description = cols[descriptionColIndex].replace(/"/g, "").trim();
+        }
+
         for (let j = 0; j < cols.length; j++) {
           if (j === categoryColIndex) continue; // skip category column
           const col = cols[j];
-          const cleaned = col.replace(/[₹,\s"]/g, "").trim();
-          const num = parseFloat(cleaned);
+          const num = parseAmount(col);
           
-          if (!isNaN(num) && num > 0 && amount === 0) {
+          if (num > 0 && amount === 0) {
             amount = num;
           } else if (isDateString(col)) {
-            date = parseIndianDate(col);
+            date = normalizeExpenseDate(col);
           } else if (col.length > 2 && !merchant) {
             merchant = col.replace(/"/g, "").trim();
           }
@@ -122,7 +237,16 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
             merchant,
             amount,
             date,
-            category: resolveCategory(csvCategory, merchant),
+            category: resolveCategory(csvCategory, merchant, description),
+            source: "csv",
+          });
+        } else if (amount > 0 && description) {
+          expenses.push({
+            merchant: description,
+            amount,
+            date,
+            category: resolveCategory(csvCategory, description, description),
+            source: "csv",
           });
         }
       }
@@ -152,12 +276,18 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
           amount: expense.amount,
           category: expense.category as any,
           expense_date: expense.date,
-          source: "ocr",
+          source: expense.source,
         });
         saved++;
       } catch (error) {
         console.error("Save error:", error);
       }
+    }
+
+    if (saved === 0) {
+      toast.error("No expenses were saved. Please check detected amounts and dates.");
+      setIsProcessing(false);
+      return;
     }
 
     toast.success(`Saved ${saved} expense(s)`);
@@ -278,20 +408,58 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
             <CardTitle className="text-base">
               Found {parsedExpenses.length} Expense(s)
             </CardTitle>
+            <p className="text-xs text-muted-foreground">
+              Home screen shows current month only. Adjust dates if needed.
+            </p>
+            <Button type="button" variant="outline" size="sm" onClick={setAllDatesToToday}>
+              Set All Dates to Today
+            </Button>
           </CardHeader>
           <CardContent className="space-y-3">
             {parsedExpenses.map((expense, i) => (
               <div
                 key={i}
-                className="flex items-center justify-between rounded-lg border p-3"
+                className="space-y-3 rounded-lg border p-3"
               >
-                <div>
-                  <p className="font-medium">{expense.merchant}</p>
-                  <p className="text-sm text-muted-foreground">
-                    {expense.date} • {expense.category}
-                  </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">{expense.merchant}</p>
+                    <p className="text-sm text-muted-foreground">Source: {expense.source.toUpperCase()}</p>
+                  </div>
+                  <p className="font-semibold">₹{expense.amount.toLocaleString("en-IN")}</p>
                 </div>
-                <p className="font-semibold">₹{expense.amount.toLocaleString("en-IN")}</p>
+
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">Date</p>
+                  <input
+                    type="date"
+                    value={expense.date}
+                    onChange={(e) => updateParsedExpenseDate(i, e.target.value)}
+                    className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                    max={format(new Date(), "yyyy-MM-dd")}
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Category (auto-detected, you can change)
+                  </p>
+                  <Select
+                    value={expense.category}
+                    onValueChange={(value) => updateParsedExpenseCategory(i, value as ExpenseCategory)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {validCategories.map((cat) => (
+                        <SelectItem key={cat} value={cat}>
+                          {CATEGORY_ICONS[cat]} {cat.charAt(0).toUpperCase() + cat.slice(1)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
             ))}
             <Button className="w-full" onClick={saveExpenses} disabled={isProcessing}>
@@ -337,18 +505,62 @@ function parseCSVLine(line: string): string[] {
 }
 
 function isDateString(str: string): boolean {
-  return /\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}/.test(str);
+  const cleaned = str.replace(/"/g, "").trim();
+  return /^\d{1,4}[-\/]\d{1,2}[-\/]\d{1,4}$/.test(cleaned);
+}
+
+function normalizeExpenseDate(value: unknown): string {
+  if (!value) return format(new Date(), "yyyy-MM-dd");
+
+  const str = String(value).replace(/"/g, "").trim();
+  if (!str) return format(new Date(), "yyyy-MM-dd");
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
+  }
+
+  if (/^\d{1,2}[-\/]\d{1,2}[-\/]\d{2,4}$/.test(str)) {
+    return parseIndianDate(str);
+  }
+
+  const parsed = new Date(str);
+  if (!Number.isNaN(parsed.getTime())) {
+    return format(parsed, "yyyy-MM-dd");
+  }
+
+  return format(new Date(), "yyyy-MM-dd");
 }
 
 function parseIndianDate(str: string): string {
   const cleaned = str.replace(/"/g, "").trim();
   const parts = cleaned.split(/[-\/]/);
   if (parts.length === 3) {
-    const [day, month, year] = parts;
-    const fullYear = year.length === 2 ? `20${year}` : year;
+    let [part1, part2, part3] = parts;
+    const fullYear = part3.length === 2 ? `20${part3}` : part3;
+
+    const first = Number(part1);
+    const second = Number(part2);
+
+    const dayFirst = first > 12 || second <= 12;
+    const day = dayFirst ? part1 : part2;
+    const month = dayFirst ? part2 : part1;
+
     return `${fullYear}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
   }
   return format(new Date(), "yyyy-MM-dd");
+}
+
+function parseAmount(value: unknown): number {
+  if (typeof value === "number") return value > 0 ? value : 0;
+
+  const cleaned = String(value ?? "")
+    .replace(/[₹,\s"]/g, "")
+    .replace(/[()]/g, "")
+    .trim();
+
+  const num = Number(cleaned);
+  if (!Number.isFinite(num)) return 0;
+  return Math.abs(num);
 }
 
 function findCategoryColumnIndex(headers: string[]): number {
@@ -363,5 +575,21 @@ function findCategoryColumnIndex(headers: string[]): number {
     const idx = normalized.findIndex((h) => h.includes(name));
     if (idx !== -1) return idx;
   }
+  return -1;
+}
+
+function findColumnIndex(headers: string[], aliases: string[]): number {
+  const normalized = headers.map((h) => (h ? h.toLowerCase().replace(/[_\s]+/g, " ").trim() : ""));
+
+  for (const alias of aliases) {
+    const exact = normalized.indexOf(alias);
+    if (exact !== -1) return exact;
+  }
+
+  for (const alias of aliases) {
+    const fuzzy = normalized.findIndex((h) => h.includes(alias));
+    if (fuzzy !== -1) return fuzzy;
+  }
+
   return -1;
 }

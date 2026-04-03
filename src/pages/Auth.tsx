@@ -11,6 +11,8 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useAuth } from "@/hooks/useAuth";
 import { toast } from "sonner";
+import { Separator } from "@/components/ui/separator";
+import { Chrome, Loader2 } from "lucide-react";
 
 const authSchema = z.object({
   email: z.string().email("Invalid email"),
@@ -21,8 +23,10 @@ type AuthData = z.infer<typeof authSchema>;
 
 export default function Auth() {
   const navigate = useNavigate();
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp, signInWithGoogle, sendPasswordResetEmail } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+  const [isResetLoading, setIsResetLoading] = useState(false);
   const [tab, setTab] = useState<"signin" | "signup">("signin");
   const [showPassword, setShowPassword] = useState(false);
 
@@ -48,6 +52,37 @@ export default function Auth() {
       toast.error(error.message || "Authentication failed");
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setIsGoogleLoading(true);
+    try {
+      const { error } = await signInWithGoogle();
+      if (error) throw error;
+    } catch (error: any) {
+      toast.error(error.message || "Google sign-in failed");
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
+  const handlePasswordReset = async () => {
+    const email = form.getValues("email");
+    if (!email) {
+      toast.error("Enter your email first");
+      return;
+    }
+
+    setIsResetLoading(true);
+    try {
+      const { error } = await sendPasswordResetEmail(email);
+      if (error) throw error;
+      toast.success("Password reset email sent. Check your inbox.");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to send reset email");
+    } finally {
+      setIsResetLoading(false);
     }
   };
 
@@ -115,8 +150,42 @@ export default function Auth() {
                     </FormItem>
                   )}
                 />
+                {tab === "signin" && (
+                  <div className="flex items-center justify-between text-xs text-muted-foreground">
+                    <span>Use your email or Google account.</span>
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="h-auto p-0 text-xs"
+                      onClick={handlePasswordReset}
+                      disabled={isResetLoading}
+                    >
+                      {isResetLoading ? "Sending..." : "Forgot password?"}
+                    </Button>
+                  </div>
+                )}
                 <Button type="submit" className="w-full" disabled={isLoading}>
                   {isLoading ? "Loading..." : tab === "signin" ? "Sign In" : "Create Account"}
+                </Button>
+                <div className="relative py-2">
+                  <Separator />
+                  <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
+                    or
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={handleGoogleSignIn}
+                  disabled={isGoogleLoading}
+                >
+                  {isGoogleLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Chrome className="h-4 w-4" />
+                  )}
+                  Continue with Google
                 </Button>
               </form>
             </Form>
