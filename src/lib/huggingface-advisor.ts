@@ -6,6 +6,7 @@ export interface FinancialDataInput {
   food: number;
   transport: number;
   others: number;
+  rawCategories?: Record<string, number>;
 }
 
 export interface FinancialAdvice {
@@ -13,6 +14,12 @@ export interface FinancialAdvice {
   riskLevel: "Low" | "Medium" | "High";
   advicePoints: string[];
   savingsPotential: number;
+  savingsPotentialBreakdown: {
+    baseSavings: number;
+    foodCut: number;
+    transportCut: number;
+    othersCut: number;
+  };
   motivationalLine: string;
   spendingBreakdown: {
     food: number;
@@ -182,8 +189,19 @@ function generateBaseAdvice(data: FinancialDataInput, metrics: FinancialMetrics)
   }
 
   if (estimatedWants > wantsTarget) {
+    let wantDetails = "";
+    if (data.rawCategories) {
+      const wantCategories = Object.entries(data.rawCategories)
+        .filter(([k]) => k !== "food" && k !== "transport" && k !== "Food" && k !== "Transport")
+        .map(([k, v]) => `${k.charAt(0).toUpperCase() + k.slice(1)} (₹${Math.round(Number(v)).toLocaleString()})`)
+        .join(", ");
+      if (wantCategories) {
+        wantDetails = ` This is coming from: ${wantCategories}.`;
+      }
+    }
+
     advicePoints.push(
-      `📊 50-30-20 Rule: Wants spending (₹${estimatedWants.toLocaleString()}) exceeds ${wantsTarget.toLocaleString()} target. Consider a 'want' budget of ₹${wantsTarget.toLocaleString()}/month.`
+      `📊 50-30-20 Rule: Wants spending (₹${Math.round(estimatedWants).toLocaleString()}) exceeds ${Math.round(wantsTarget).toLocaleString()} target. Consider a 'want' budget of ₹${Math.round(wantsTarget).toLocaleString()}/month.${wantDetails}`
     );
   }
 
@@ -199,14 +217,7 @@ function generateBaseAdvice(data: FinancialDataInput, metrics: FinancialMetrics)
     );
   }
 
-  // 5. Emergency fund status
-  const emergencyFundTarget = data.monthlyIncome * 6; // 6 months of expenses
-  const currentEmergencyFund = monthlySavings * 3; // Rough estimate
-  if (currentEmergencyFund < emergencyFundTarget * 0.5) {
-    advicePoints.push(
-      `🛡️ Emergency Fund Priority: Target ₹${emergencyFundTarget.toLocaleString()} (6 months expenses). Currently at ~₹${Math.round(currentEmergencyFund)}. Build this before major investments.`
-    );
-  }
+
 
   return advicePoints.slice(0, 6); // Limit to 6 key points for readability
 }
@@ -275,14 +286,23 @@ Provide ONE specific, actionable financial tip that addresses their biggest oppo
     ];
     const motivationalLine = motivationalLines[Math.floor(Math.random() * motivationalLines.length)];
 
+    const baseSavings = Math.max(0, metrics.savingsAmount);
+    const foodCut = data.food * 0.15;
+    const transportCut = data.transport * 0.2;
+    const othersCut = data.others * 0.2;
+    const savingsPotential = Math.round(baseSavings + foodCut + transportCut + othersCut);
+
     return {
       spenderType,
       riskLevel,
       advicePoints: enhancedAdvice,
-      savingsPotential: Math.round(
-        Math.max(0, metrics.savingsAmount) +
-        (data.food * 0.15 + data.transport * 0.2 + data.others * 0.2)
-      ),
+      savingsPotential,
+      savingsPotentialBreakdown: {
+        baseSavings: Math.round(baseSavings),
+        foodCut: Math.round(foodCut),
+        transportCut: Math.round(transportCut),
+        othersCut: Math.round(othersCut),
+      },
       motivationalLine,
       spendingBreakdown: {
         food: metrics.foodPercent,

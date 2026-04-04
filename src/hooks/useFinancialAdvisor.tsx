@@ -18,12 +18,17 @@ export function useFinancialAdvisor(options?: UseFinancialAdvisorOptions) {
       // Use provided income or default
       const monthlyIncome = options?.monthlyIncome || 50000;
 
+      const foodAmount = stats.byCategory.food || 0;
+      const transportAmount = stats.byCategory.transport || 0;
+      const othersAmount = stats.totalSpent - foodAmount - transportAmount;
+
       const financialData: FinancialDataInput = {
         monthlyIncome,
         totalExpense: stats.totalSpent,
-        food: stats.byCategory.Food || 0,
-        transport: stats.byCategory.Transport || 0,
-        others: stats.byCategory.Others || 0,
+        food: foodAmount,
+        transport: transportAmount,
+        others: othersAmount,
+        rawCategories: stats.byCategory as Record<string, number>,
       };
 
       return generateFinancialAdvice(financialData);

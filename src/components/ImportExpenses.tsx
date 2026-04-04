@@ -101,6 +101,7 @@ interface ParsedExpense {
   date: string;
   category: ExpenseCategory;
   source: "ocr" | "csv";
+  description?: string;
 }
 
 export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
@@ -167,6 +168,7 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
           date: normalizeExpenseDate(data.date),
           category: resolveCategory(data.category, data.merchant, data.description),
           source: "ocr" as const,
+          description: data.description,
         };
 
         if (expense.amount <= 0) {
@@ -194,10 +196,12 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
       const lines = text.split("\n").filter((l) => l.trim());
       const expenses: ParsedExpense[] = [];
 
-      // Detect category column from headers
+      // Detect columns from headers
       const headers = parseCSVLine(lines[0]);
       const categoryColIndex = findCategoryColumnIndex(headers);
-      const descriptionColIndex = findColumnIndex(headers, ["description", "narration", "remarks", "note", "particulars"]);
+      const descriptionColIndex = findColumnIndex(headers, ["description", "narration", "remarks", "note", "particulars", "transaction details"]);
+      const debitColIndex = findColumnIndex(headers, ["debit", "withdrawal", "dr"]);
+      const creditColIndex = findColumnIndex(headers, ["credit", "deposit", "cr"]);
 
       for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
@@ -208,54 +212,102 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
         let merchant = "";
         let csvCategory = "";
         let description = "";
+        let isExpense = false;
+        let hasExplicitDebitCreditMatch = false;
 
-        // Extract category from detected column
+        // 1. Extract known columns
         if (categoryColIndex !== -1 && cols[categoryColIndex]) {
           csvCategory = cols[categoryColIndex].replace(/"/g, "").trim().toLowerCase();
         }
-
         if (descriptionColIndex !== -1 && cols[descriptionColIndex]) {
           description = cols[descriptionColIndex].replace(/"/g, "").trim();
         }
 
-        for (let j = 0; j < cols.length; j++) {
-          if (j === categoryColIndex) continue; // skip category column
-          const col = cols[j];
-          const num = parseAmount(col);
-          
-          if (num > 0 && amount === 0) {
-            amount = num;
-          } else if (isDateString(col)) {
-            date = normalizeExpenseDate(col);
-          } else if (col.length > 2 && !merchant) {
-            merchant = col.replace(/"/g, "").trim();
+        // 2. Check for explicit Debit/Credit columns FIRST (Best Case)
+        if (debitColIndex !== -1 && cols[debitColIndex]) {
+          const debitVal = parseSignedAmount(cols[debitColIndex]);
+          if (debitVal !== null && debitVal > 0) {
+            amount = debitVal;
+            isExpense = true;
+            hasExplicitDebitCreditMatch = true;
+          }
+        }
+        if (creditColIndex !== -1 && cols[creditColIndex] && !hasExplicitDebitCreditMatch) {
+          const creditVal = parseSignedAmount(cols[creditColIndex]);
+          if (creditVal !== null && creditVal > 0) {
+            amount = creditVal; // It's money coming in
+            isExpense = false; // We ignore this
+            hasExplicitDebitCreditMatch = true;
           }
         }
 
-        if (amount > 0 && merchant) {
+        // 3. Fuzzy loop for remaining missing data (Dates, Merchants, fallback amounts)
+        for (let j = 0; j < cols.length; j++) {
+          if (j === categoryColIndex) continue;
+          
+          const col = cols[j];
+          
+          if (isDateString(col)) {
+            date = normalizeExpenseDate(col);
+          } else if (col.length > 2 && !merchant && j !== descriptionColIndex && j !== debitColIndex && j !== creditColIndex && Number.isNaN(Number(col.replace(/[₹,\s"]/g, "")))) {
+            merchant = col.replace(/"/g, "").trim();
+          }
+
+          // If we didn't find amount via explicit Debit/Credit columns, look for a signed number
+          if (amount === 0 && j !== debitColIndex && j !== creditColIndex) {
+            const num = parseSignedAmount(col);
+            if (num !== null && num !== 0) {
+              if (num < 0) {
+                // Negative signifies money going out (Expense)
+                amount = Math.abs(num);
+                isExpense = true;
+                hasExplicitDebitCreditMatch = true;
+              } else {
+                amount = num;
+              }
+            }
+          }
+        }
+
+        // Use description as merchant fallback if needed
+        if (!merchant && description) {
+          merchant = description;
+        }
+
+        // 4. Text-based detection (if no explicit minus sign or debit column was found)
+        if (!hasExplicitDebitCreditMatch && amount > 0) {
+          const descLower = description.toLowerCase();
+          const expenseKw = ["upi", "pos", "debit", "swiggy", "zomato", "amazon", "uber", "bill", "atm", "ach", "chq", "withdrawal"];
+          const incomeKw = ["salary", "refund", "credit", "neft inward", "rtgs inward", "interest", "deposit", "reversal"];
+
+          if (incomeKw.some(kw => descLower.includes(kw))) {
+            isExpense = false;
+          } else if (expenseKw.some(kw => descLower.includes(kw))) {
+            isExpense = true;
+          } else {
+            // If completely ambiguous in a single-column positive amount setup, we assume expense to be safe, unless it's a huge round number which might be deposit
+            isExpense = true;
+          }
+        }
+
+        // 5. Final check: ONLY push if it was flagged as an expense!
+        if (isExpense && amount > 0 && merchant) {
           expenses.push({
             merchant,
             amount,
             date,
             category: resolveCategory(csvCategory, merchant, description),
             source: "csv",
-          });
-        } else if (amount > 0 && description) {
-          expenses.push({
-            merchant: description,
-            amount,
-            date,
-            category: resolveCategory(csvCategory, description, description),
-            source: "csv",
+            description,
           });
         }
       }
 
       if (expenses.length > 0) {
         setParsedExpenses(expenses);
-        toast.success(`Found ${expenses.length} expense(s) in CSV`);
+        toast.success(`Found ${expenses.length} actual expense(s). Ignored credits/deposits.`);
       } else {
-        toast.error("No valid expenses found in CSV");
+        toast.error("No valid expenses found. The CSV might only contain credits/deposits.");
       }
     } catch (error) {
       console.error("CSV parse error:", error);
@@ -422,11 +474,18 @@ export function ImportExpenses({ onSuccess }: { onSuccess?: () => void }) {
                 className="space-y-3 rounded-lg border p-3"
               >
                 <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium">{expense.merchant}</p>
-                    <p className="text-sm text-muted-foreground">Source: {expense.source.toUpperCase()}</p>
+                  <div className="w-[70%]">
+                    <p className="font-medium truncate" title={expense.description || expense.merchant}>
+                      {expense.description || expense.merchant}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate" title={expense.merchant !== expense.description ? expense.merchant : ""}>
+                      {expense.merchant !== expense.description && expense.merchant ? `Matched: ${expense.merchant} ` : ""}
+                      <span className="opacity-70">[{expense.source.toUpperCase()}]</span>
+                    </p>
                   </div>
-                  <p className="font-semibold">₹{expense.amount.toLocaleString("en-IN")}</p>
+                  <p className="font-semibold text-right whitespace-nowrap pl-2">
+                    ₹{expense.amount.toLocaleString("en-IN")}
+                  </p>
                 </div>
 
                 <div className="space-y-2">
@@ -561,6 +620,28 @@ function parseAmount(value: unknown): number {
   const num = Number(cleaned);
   if (!Number.isFinite(num)) return 0;
   return Math.abs(num);
+}
+
+function parseSignedAmount(value: unknown): number | null {
+  if (typeof value === "number") return value;
+
+  let cleaned = String(value ?? "")
+    .replace(/[₹,\s"]/g, "")
+    .trim();
+
+  if (cleaned.startsWith("(") && cleaned.endsWith(")")) {
+    cleaned = "-" + cleaned.slice(1, -1);
+  } else if (cleaned.toLowerCase().endsWith("cr")) {
+    cleaned = cleaned.toLowerCase().replace("cr", "");
+    const num = Number(cleaned);
+    return Number.isFinite(num) ? Math.abs(num) : null;
+  } else if (cleaned.toLowerCase().endsWith("dr")) {
+    cleaned = "-" + cleaned.toLowerCase().replace("dr", "");
+  }
+
+  const num = Number(cleaned);
+  if (!Number.isFinite(num)) return null;
+  return num;
 }
 
 function findCategoryColumnIndex(headers: string[]): number {

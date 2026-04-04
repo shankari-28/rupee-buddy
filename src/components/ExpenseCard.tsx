@@ -18,9 +18,9 @@ export function ExpenseCard({ expense, onDelete }: ExpenseCardProps) {
         {CATEGORY_ICONS[expense.category]}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-medium truncate">{expense.merchant}</p>
-        <p className="text-xs text-muted-foreground">
-          {format(new Date(expense.expense_date), "dd MMM yyyy")} • {expense.category}
+        <p className="font-medium truncate capitalize">{expense.category}</p>
+        <p className="text-xs text-muted-foreground truncate">
+          {format(new Date(expense.expense_date), "dd MMM yyyy")} {expense.merchant && expense.merchant !== "Unknown" ? `• ${expense.merchant}` : ""}
         </p>
       </div>
       <div className="flex items-center gap-2">

@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { Loader2, Sparkles, Store, ArrowDown, ArrowUp, Minus, Clock, AlertTriangle } from "lucide-react";
+import { Loader2, Sparkles, Store, ArrowDown, ArrowUp, Minus, Clock, AlertTriangle, Send, User, Bot } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { callGemini } from "@/lib/gemini";
 import { CATEGORY_ICONS } from "@/lib/merchant-rules";
+import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 
 interface Expense {
@@ -85,19 +86,27 @@ function analyzeWeekendVsWeekday(expenses: Expense[]) {
 }
 
 export function MerchantIntelligence({ expenses, prevMonthExpenses = [] }: MerchantIntelligenceProps) {
-  const [geminiTips, setGeminiTips] = useState<string>("");
-  const [loadingTips, setLoadingTips] = useState(false);
+  const [messages, setMessages] = useState<{ role: "user" | "model"; text: string }[]>([
+    { role: "model", text: "I've analyzed your merchants! Ask me about alternatives, spending habits, or how to reduce your specific bills (e.g., 'Cheaper alternatives for Netflix?')." }
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [isChatLoading, setIsChatLoading] = useState(false);
 
   const totalSpend = expenses.reduce((s, e) => s + e.amount, 0);
 
   // Build merchant stats
   const merchantMap: Record<string, { amount: number; count: number; category: string }> = {};
   expenses.forEach((e) => {
-    if (!merchantMap[e.merchant]) {
-      merchantMap[e.merchant] = { amount: 0, count: 0, category: e.category };
+    const genericNames = ["debit", "withdrawal", "unknown", "payment", "upi", "upi payment"];
+    const resolvedMerchant = genericNames.includes(e.merchant.toLowerCase().trim())
+      ? e.category.charAt(0).toUpperCase() + e.category.slice(1)
+      : e.merchant;
+
+    if (!merchantMap[resolvedMerchant]) {
+      merchantMap[resolvedMerchant] = { amount: 0, count: 0, category: e.category };
     }
-    merchantMap[e.merchant].amount += e.amount;
-    merchantMap[e.merchant].count++;
+    merchantMap[resolvedMerchant].amount += e.amount;
+    merchantMap[resolvedMerchant].count++;
   });
 
   // Prev month merchant map
@@ -127,33 +136,46 @@ export function MerchantIntelligence({ expenses, prevMonthExpenses = [] }: Merch
 
   const weekendStats = analyzeWeekendVsWeekday(expenses);
 
-  const fetchGeminiTips = async () => {
-    setLoadingTips(true);
+  const handleSendChat = async () => {
+    if (!chatInput.trim()) return;
+
+    const userMessage = chatInput.trim();
+    setMessages((prev) => [...prev, { role: "user", text: userMessage }]);
+    setChatInput("");
+    setIsChatLoading(true);
+
     const topMerchants = merchants
       .slice(0, 4)
       .map((m) => `${m.merchant}: ₹${Math.round(m.amount)} (${m.percentOfTotal.toFixed(0)}% of spend)`)
       .join(", ");
 
-    const prompt = `You are a sharp Indian personal finance analyst. Analyze this user's merchant spending and give specific, actionable advice.
-
+    const systemPrompt = `You are a helpful, witty Indian personal finance AI assistant analyzing this user's specific merchant spending.
+Context:
 Top merchants this month: ${topMerchants}
 Total spend: ₹${Math.round(totalSpend).toLocaleString("en-IN")}
-Weekend spending avg: ₹${Math.round(weekendStats.weekendAvg)} per transaction
-Weekday spending avg: ₹${Math.round(weekendStats.weekdayAvg)} per transaction
+Weekend vs Weekday spending ratio: ${weekendStats.ratio.toFixed(1)}x
 
-Give 3 very specific, India-context merchant intelligence tips. For example:
-- "Your Swiggy spend is ₹X — 40% goes to delivery fees. Switch to Swiggy Instamart for groceries and save the cab fare"
-- "Booking Ola on weekday mornings (8-9am) is 30% more than weekends — adjust commute timing"
+Be short, punchy, and conversational. Give specific Indian alternatives (Zepto, Rapido, JioCinema etc) if asked. Do not use complex markdown formatting other than bolding text. Answer the user's latest query directly based on the context.
 
-Format as 3 short punchy tips, each starting with 💡. No fluff. Be specific with rupee amounts where possible.`;
+Chat History:
+${messages.map(m => `${m.role === 'model' ? 'AI' : 'User'}: ${m.text}`).join('\n')}
+User: ${userMessage}
+AI:`;
 
     try {
-      const tips = await callGemini(prompt);
-      setGeminiTips(tips);
+      const tips = await callGemini(systemPrompt);
+      setMessages((prev) => [...prev, { role: "model", text: tips }]);
     } catch {
-      toast.error("Couldn't get merchant tips. Check API key.");
+      toast.error("Couldn't reach Gemini. Check API key.");
     } finally {
-      setLoadingTips(false);
+      setIsChatLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendChat();
     }
   };
 
@@ -256,34 +278,78 @@ Format as 3 short punchy tips, each starting with 💡. No fluff. Be specific wi
         </Card>
       )}
 
-      {/* Gemini Intelligence */}
-      <div className="space-y-3">
-        <Button
-          variant="outline"
-          className="w-full gap-2 border-purple-200 text-purple-700 hover:bg-purple-50"
-          onClick={fetchGeminiTips}
-          disabled={loadingTips}
-        >
-          {loadingTips ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-          {loadingTips ? "Gemini analyzing your merchants..." : "✨ Get Personalized Merchant Tips"}
-        </Button>
-
-        {geminiTips && (
-          <Card className="border-purple-200 bg-gradient-to-br from-purple-50 to-indigo-50">
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-start gap-3">
-                <div className="flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-full bg-purple-100">
-                  <Sparkles className="h-4 w-4 text-purple-600" />
+      {/* Gemini Chat Interface */}
+      <Card className="border-purple-200 shadow-sm overflow-hidden flex flex-col">
+        <CardHeader className="bg-purple-50 pb-3 pt-4 border-b border-purple-100 flex flex-row items-center gap-2 space-y-0">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-200">
+            <Sparkles className="h-4 w-4 text-purple-700" />
+          </div>
+          <div>
+            <CardTitle className="text-sm font-semibold text-purple-900">Merchant AI Assistant</CardTitle>
+            <p className="text-xs text-purple-600/80">Ask about cheaper alternatives & tips</p>
+          </div>
+        </CardHeader>
+        
+        <CardContent className="p-0 flex flex-col">
+          {/* Chat Messages Area */}
+          <div className="h-[280px] overflow-y-auto p-4 space-y-4 bg-slate-50/50">
+            {messages.map((msg, idx) => (
+              <div
+                key={idx}
+                className={`flex gap-3 text-sm ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}
+              >
+                <div
+                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
+                    msg.role === "user" ? "bg-primary text-primary-foreground" : "bg-purple-100 text-purple-700"
+                  }`}
+                >
+                  {msg.role === "user" ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                 </div>
-                <div>
-                  <p className="text-xs font-semibold text-purple-600 mb-2">Gemini Merchant Analysis</p>
-                  <div className="text-sm text-purple-900 leading-relaxed whitespace-pre-line">{geminiTips}</div>
+                <div
+                  className={`rounded-2xl px-4 py-2.5 max-w-[85%] ${
+                    msg.role === "user"
+                      ? "bg-primary text-primary-foreground rounded-tr-sm"
+                      : "bg-white border text-foreground rounded-tl-sm shadow-sm"
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
+            ))}
+            {isChatLoading && (
+              <div className="flex gap-3 text-sm flex-row">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-100 text-purple-700">
+                  <Bot className="h-4 w-4" />
+                </div>
+                <div className="rounded-2xl px-4 py-2 bg-white border text-foreground rounded-tl-sm shadow-sm flex items-center">
+                  <Loader2 className="h-4 w-4 animate-spin text-purple-500" />
+                  <span className="ml-2 text-xs text-muted-foreground">Thinking...</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Chat Input Area */}
+          <div className="p-3 bg-white border-t flex gap-2">
+            <Input
+              placeholder="E.g. What's a cheaper alternative to Swiggy?"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              disabled={isChatLoading}
+              className="flex-1 focus-visible:ring-purple-500 bg-slate-50"
+            />
+            <Button 
+              size="icon" 
+              onClick={handleSendChat} 
+              disabled={!chatInput.trim() || isChatLoading}
+              className="bg-purple-600 hover:bg-purple-700 shrink-0"
+            >
+              <Send className="h-4 w-4" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }

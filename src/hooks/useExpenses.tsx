@@ -46,7 +46,12 @@ export function useExpenseStats(dateRange?: { start: Date; end: Date }) {
     }, {} as Record<ExpenseCategory, number>),
     topMerchants: Object.entries(
       expenses.reduce((acc, e) => {
-        acc[e.merchant] = (acc[e.merchant] || 0) + Number(e.amount);
+        const genericNames = ["debit", "withdrawal", "unknown", "payment", "upi", "upi payment"];
+        const merchantName = genericNames.includes(e.merchant.toLowerCase().trim())
+          ? e.category.charAt(0).toUpperCase() + e.category.slice(1)
+          : e.merchant;
+          
+        acc[merchantName] = (acc[merchantName] || 0) + Number(e.amount);
         return acc;
       }, {} as Record<string, number>)
     )

@@ -2,6 +2,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AlertCircle, TrendingUp, Award, Zap } from "lucide-react";
 import { useFinancialAdvisor } from "@/hooks/useFinancialAdvisor";
 import { cn } from "@/lib/utils";
@@ -137,10 +138,40 @@ export function FinancialAdvisor({ dateRange, monthlyIncome = 50000, className }
             </div>
 
             {/* Savings Potential */}
-            <div className="rounded-lg border p-4">
-              <p className="text-sm font-medium text-muted-foreground">Monthly Savings Potential</p>
-              <p className="mt-2 text-2xl font-bold text-green-600">₹{advice.savingsPotential.toLocaleString()}</p>
-            </div>
+            <TooltipProvider delayDuration={100}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div className="rounded-lg border p-4 cursor-help relative group bg-card transition-colors hover:bg-muted/30">
+                    <p className="text-sm font-medium text-muted-foreground border-b border-dashed border-muted-foreground/30 inline-block pb-0.5">
+                      Monthly Savings Potential
+                    </p>
+                    <p className="mt-2 text-2xl font-bold text-green-600">₹{advice.savingsPotential.toLocaleString()}</p>
+                    <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="p-3 w-56 text-xs space-y-1.5 shadow-lg relative z-[100]">
+                  <p className="font-semibold border-b pb-1 mb-2 text-sm text-foreground">Potential Breakdown</p>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Current Unspent:</span> 
+                    <span className="font-medium text-foreground">₹{advice.savingsPotentialBreakdown?.baseSavings?.toLocaleString() || 0}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Food (-15%):</span> 
+                    <span className="font-semibold text-green-500">+₹{advice.savingsPotentialBreakdown?.foodCut?.toLocaleString() || 0}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Transport (-20%):</span> 
+                    <span className="font-semibold text-green-500">+₹{advice.savingsPotentialBreakdown?.transportCut?.toLocaleString() || 0}</span>
+                  </div>
+                  <div className="flex justify-between text-muted-foreground">
+                    <span>Others (-20%):</span> 
+                    <span className="font-semibold text-green-500">+₹{advice.savingsPotentialBreakdown?.othersCut?.toLocaleString() || 0}</span>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           </div>
 
           {/* Spending Breakdown */}
